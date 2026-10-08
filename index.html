@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="zh-HK" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>香港雙手動態手語辨識 (HKSL AI Engine v3 Holistic)</title>
+  
+  <!-- PWA & Mobile Web App Meta -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="香港手語AI">
+  <meta name="theme-color" content="#0284c7">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2038/2038018.png">
+  <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/2038/2038018.png">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              700: '#0369a1',
+              900: '#0c4a6e',
+            },
+            accent: {
+              500: '#8b5cf6',
+              600: '#7c3aed',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Google Fonts Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- MediaPipe Holistic CDN Scripts (取代純 Hands) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+  <!-- Custom CSS for Glassmorphism & Responsive UI Fixes -->
+  <style>
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      touch-action: manipulation;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.65);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .pulse-green {
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulseGreen 2s infinite;
+    }
+    @keyframes pulseGreen {
+      0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col bg-slate-950 text-slate-100 overflow-hidden">
+
+  <!-- Header Bar -->
+  <header class="glass-panel sticky top-0 z-40 px-3 sm:px-4 py-2.5 flex items-center justify-between shadow-lg flex-shrink-0">
+    <div class="flex items-center space-x-2.5 min-w-0">
+      <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-brand-500 to-accent-500 flex items-center justify-center text-white shadow-md shadow-brand-500/20 flex-shrink-0">
+        <i class="fa-solid fa-hands text-base sm:text-lg"></i>
+      </div>
+      <div class="min-w-0">
+        <h1 class="text-sm sm:text-base font-bold bg-gradient-to-r from-sky-400 to-purple-400 bg-clip-text text-transparent leading-tight truncate">
+          香港手語 AI (Holistic + DTW v3)
+        </h1>
+        <p class="text-[10px] text-slate-400 flex items-center gap-1 truncate">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-green flex-shrink-0"></span> 雙肩原點正規化 + 3D角度算子 + DTW
+        </p>
+      </div>
+    </div>
+
+    <!-- Status Badges -->
+    <div class="flex items-center space-x-1.5 text-xs flex-shrink-0 ml-2">
+      <div id="velocity-badge" class="px-2 py-0.5 sm:py-1 rounded-lg bg-slate-800/80 text-slate-300 font-mono text-[10px] sm:text-[11px] border border-slate-700/50 whitespace-nowrap">
+        Vel: <span id="vel-val" class="text-amber-400 font-semibold">0.00</span>
+      </div>
+      <div id="fps-badge" class="px-2 py-0.5 sm:py-1 rounded-lg bg-slate-800/80 text-slate-300 font-mono text-[10px] sm:text-[11px] border border-slate-700/50 whitespace-nowrap">
+        FPS: <span id="fps-val" class="text-sky-400 font-semibold">0</span>
+      </div>
+      <div id="latency-badge" class="hidden sm:block px-2 py-1 rounded-lg bg-slate-800/80 text-slate-300 font-mono text-[11px] border border-slate-700/50 whitespace-nowrap">
+        <span id="latency-val" class="text-emerald-400 font-semibold">0</span>ms
+      </div>
+    </div>
+  </header>
+
+  <!-- Main View Area -->
+  <main class="flex-1 relative overflow-y-auto no-scrollbar pb-24">
+    
+    <!-- Toast Notification Banner -->
+    <div id="toast-container" class="fixed top-14 left-1/2 -translate-x-1/2 z-50 w-[92%] max-w-sm transition-all duration-300 pointer-events-none opacity-0 translate-y-2">
+      <div id="toast-body" class="glass-panel px-3.5 py-2.5 rounded-2xl shadow-2xl border border-sky-500/30 flex items-center space-x-2.5 text-xs sm:text-sm">
+        <i id="toast-icon" class="fa-solid fa-circle-info text-sky-400 text-base flex-shrink-0"></i>
+        <span id="toast-msg" class="text-slate-100 font-medium truncate">提示訊息</span>
+      </div>
+    </div>
+
+    <!-- Hidden shared video stream -->
+    <video id="webcam" class="hidden" playsinline muted></video>
+
+    <!-- ================= TAB 1: LIVE RECOGNITION ================= -->
+    <section id="tab-recognize" class="tab-content active p-3 sm:p-4 max-w-xl sm:max-w-2xl mx-auto space-y-3.5">
+      
+      <!-- Video / Canvas Feed Container -->
+      <div class="relative w-full aspect-[4/3] rounded-3xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl flex items-center justify-center">
+        <!-- Render Canvas -->
+        <canvas id="output-canvas" class="w-full h-full object-cover"></canvas>
+
+        <!-- Camera Loading Overlay -->
+        <div id="cam-loading" class="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-6 text-center space-y-3 z-10">
+          <div class="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-4 border-sky-500/20 border-t-sky-500 animate-spin"></div>
+          <p class="text-slate-300 text-xs sm:text-sm font-medium">正在啟動 MediaPipe Holistic 全方位追蹤模型...</p>
+          <p class="text-slate-500 text-[11px]">包含身體骨架正規化、雙手角度算子與面部微表情偵測</p>
+        </div>
+
+        <!-- Dynamic Overlay Controls -->
+        <div class="absolute top-2.5 right-2.5 flex items-center space-x-2 z-20">
+          <button class="btn-toggle-mirror w-8 h-8 sm:w-9 sm:h-9 rounded-full glass-panel text-slate-300 hover:text-white flex items-center justify-center transition active:scale-95" title="鏡像翻轉">
+            <i class="fa-solid fa-arrows-rotate text-xs sm:text-sm"></i>
+          </button>
+          <button class="btn-switch-cam w-8 h-8 sm:w-9 sm:h-9 rounded-full glass-panel text-slate-300 hover:text-white flex items-center justify-center transition active:scale-95" title="切換前後鏡頭">
+            <i class="fa-solid fa-camera-rotate text-xs sm:text-sm"></i>
+          </button>
+        </div>
+
+        <!-- Recognition Target Badge Overlay -->
+        <div class="absolute bottom-2.5 left-2.5 right-2.5 z-20 glass-panel p-2.5 sm:p-3 rounded-2xl border border-sky-500/20 flex items-center justify-between gap-2">
+          <div class="flex items-center space-x-2.5 min-w-0">
+            <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-base sm:text-xl flex-shrink-0">
+              <i id="sign-icon" class="fa-solid fa-hands"></i>
+            </div>
+            <div class="min-w-0">
+              <div class="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-slate-400 truncate">目前辨識手語</div>
+              <div id="detected-label" class="text-sm sm:text-lg font-extrabold text-white tracking-wide truncate">偵測中...</div>
+            </div>
+          </div>
+          <div class="text-right flex-shrink-0 ml-1">
+            <div class="text-[9px] sm:text-[10px] text-slate-400 whitespace-nowrap">置信度 Confidence</div>
+            <div id="detected-confidence" class="text-xs sm:text-base font-bold font-mono text-emerald-400">0%</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sentence Builder Display Card -->
+      <div class="glass-card p-3.5 sm:p-4 rounded-2xl space-y-2.5">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5 min-w-0 truncate">
+            <i class="fa-solid fa-align-left text-sky-400 flex-shrink-0"></i> <span class="truncate">組成手語句子 (Sentence Builder)</span>
+          </span>
+          <div class="flex items-center space-x-1.5 flex-shrink-0">
+            <label class="inline-flex items-center cursor-pointer text-xs text-slate-400">
+              <input type="checkbox" id="chk-auto-append" class="sr-only peer" checked>
+              <div class="w-7 h-3.5 sm:w-8 sm:h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-2.5 after:w-2.5 sm:after:h-3 sm:after:w-3 after:transition-all peer-checked:bg-sky-500 relative"></div>
+              <span class="ml-1 text-[10px] sm:text-[11px] whitespace-nowrap">自動連續輸入</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Sentence Display Box -->
+        <div id="sentence-box" class="w-full min-h-[56px] max-h-[110px] p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-slate-100 text-base sm:text-lg font-medium overflow-y-auto break-words flex flex-wrap gap-1.5 items-center">
+          <span class="text-slate-500 text-xs sm:text-sm font-normal italic">請在鏡頭前展示單手或雙手動作...</span>
+        </div>
+
+        <!-- Action Controls for Sentence -->
+        <div class="grid grid-cols-4 gap-1.5 sm:gap-2 pt-0.5">
+          <button id="btn-speak" class="col-span-2 py-2 px-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-brand-600 hover:from-sky-400 hover:to-brand-500 text-white font-semibold text-[11px] sm:text-xs flex items-center justify-center space-x-1.5 shadow-lg shadow-sky-500/20 active:scale-95 transition">
+            <i class="fa-solid fa-volume-high text-xs sm:text-sm flex-shrink-0"></i>
+            <span class="whitespace-nowrap truncate">廣東話語音朗讀</span>
+          </button>
+          <button id="btn-backspace" class="col-span-1 py-2 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-[11px] sm:text-xs flex items-center justify-center space-x-1 border border-slate-700 active:scale-95 transition">
+            <i class="fa-solid fa-delete-left text-xs sm:text-sm flex-shrink-0"></i>
+            <span class="whitespace-nowrap truncate">刪除</span>
+          </button>
+          <button id="btn-clear" class="col-span-1 py-2 px-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-400 font-medium text-[11px] sm:text-xs flex items-center justify-center space-x-1 border border-slate-700 active:scale-95 transition">
+            <i class="fa-solid fa-trash-can text-xs sm:text-sm flex-shrink-0"></i>
+            <span class="whitespace-nowrap truncate">清空</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 2: GESTURE LEARNING ================= -->
+    <section id="tab-learn" class="tab-content hidden p-3 sm:p-4 max-w-xl sm:max-w-2xl mx-auto space-y-3.5">
+      <div class="glass-card p-3.5 sm:p-4 rounded-2xl space-y-3.5">
+        
+        <!-- Header & Multi-sample Indicator -->
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center space-x-2 text-sky-400 font-bold text-sm sm:text-base min-w-0">
+            <i class="fa-solid fa-graduation-cap flex-shrink-0"></i>
+            <h2 class="truncate">學習新手語 (45幀 Holistic 軌跡)</h2>
+          </div>
+          <div id="sample-count-badge" class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] sm:text-xs font-semibold border border-emerald-500/30 whitespace-nowrap flex-shrink-0">
+            進度: <span id="sample-count-text">0</span> / 3 個動態樣本
+          </div>
+        </div>
+
+        <p class="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
+          系統會自動以你的<strong class="text-sky-300">雙肩中心點為原點</strong>正規化座標，並計算關節夾角。不受距離遠近、身體胖瘦或動作快慢影響。
+        </p>
+
+        <!-- Inputs Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-[11px] sm:text-xs font-semibold text-slate-300 mb-1">手語詞彙名稱 <span class="text-rose-400">*</span></label>
+            <input type="text" id="input-sign-name" placeholder="例如：開心 / 香港 / 朋友" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 text-xs sm:text-sm">
+          </div>
+          <div>
+            <label class="block text-[11px] sm:text-xs font-semibold text-slate-300 mb-1">語音朗讀文本</label>
+            <input type="text" id="input-sign-tts" placeholder="朗讀粵語文字 (預設同名稱)" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 text-xs sm:text-sm">
+          </div>
+        </div>
+
+        <!-- 3 Samples Status Cards -->
+        <div class="grid grid-cols-3 gap-1.5 sm:gap-2 py-0.5">
+          <div id="sample-card-1" class="p-1.5 sm:p-2 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-0.5 transition-all">
+            <div class="text-[9px] sm:text-[10px] text-slate-400 font-medium whitespace-nowrap">樣本 1</div>
+            <div class="sample-status-text text-[10px] sm:text-xs font-bold text-slate-500 whitespace-nowrap truncate">未錄製</div>
+          </div>
+          <div id="sample-card-2" class="p-1.5 sm:p-2 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-0.5 transition-all">
+            <div class="text-[9px] sm:text-[10px] text-slate-400 font-medium whitespace-nowrap">樣本 2</div>
+            <div class="sample-status-text text-[10px] sm:text-xs font-bold text-slate-500 whitespace-nowrap truncate">未錄製</div>
+          </div>
+          <div id="sample-card-3" class="p-1.5 sm:p-2 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-0.5 transition-all">
+            <div class="text-[9px] sm:text-[10px] text-slate-400 font-medium whitespace-nowrap">樣本 3</div>
+            <div class="sample-status-text text-[10px] sm:text-xs font-bold text-slate-500 whitespace-nowrap truncate">未錄製</div>
+          </div>
+        </div>
+
+        <!-- Recording Preview Canvas Container with Overlay -->
+        <div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 flex items-center justify-center shadow-lg">
+          <canvas id="learn-canvas" class="w-full h-full object-cover"></canvas>
+          
+          <!-- Dynamic Mirror/Camera Controls -->
+          <div class="absolute top-2.5 right-2.5 flex items-center space-x-2 z-20">
+            <button class="btn-toggle-mirror w-8 h-8 rounded-full glass-panel text-slate-300 hover:text-white flex items-center justify-center transition active:scale-95" title="鏡像翻轉">
+              <i class="fa-solid fa-arrows-rotate text-xs"></i>
+            </button>
+            <button class="btn-switch-cam w-8 h-8 rounded-full glass-panel text-slate-300 hover:text-white flex items-center justify-center transition active:scale-95" title="切換前後鏡頭">
+              <i class="fa-solid fa-camera-rotate text-xs"></i>
+            </button>
+          </div>
+
+          <!-- Clear Recording Status Overlay -->
+          <div id="learn-overlay" class="absolute inset-0 pointer-events-none hidden z-30 flex flex-col justify-between p-2.5 sm:p-3">
+            <!-- Top Status Row -->
+            <div class="flex items-start justify-between w-full">
+              <div class="glass-panel px-2.5 py-1 rounded-xl border border-sky-500/30 flex items-center space-x-1.5 max-w-[70%]">
+                <span id="learn-countdown" class="text-sm sm:text-base font-black text-sky-400 font-mono flex-shrink-0">3</span>
+                <div class="leading-tight truncate min-w-0">
+                  <p id="learn-status" class="text-[10px] sm:text-[11px] font-semibold text-slate-100 truncate">擺好雙手手勢...</p>
+                </div>
+              </div>
+
+              <!-- Red REC Indicator -->
+              <div id="rec-indicator" class="hidden glass-panel px-2 py-0.5 rounded-full border border-rose-500/50 flex items-center space-x-1 bg-rose-950/50 flex-shrink-0">
+                <span class="relative flex h-2 w-2">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+                </span>
+                <span class="text-[9px] font-bold text-rose-300 font-mono tracking-wider">REC</span>
+              </div>
+            </div>
+
+            <!-- Bottom Progress Bar Panel -->
+            <div class="w-full space-y-1 bg-slate-950/80 backdrop-blur-md p-2 rounded-xl border border-white/10">
+              <div class="flex justify-between text-[10px] text-slate-300 font-medium">
+                <span id="learn-sample-title" class="truncate">軌跡擷取進度 (45 幀)</span>
+                <span id="learn-progress-text" class="font-mono text-emerald-400 flex-shrink-0 ml-1">0 / 45</span>
+              </div>
+              <div class="w-full bg-slate-800/80 rounded-full h-1.5 overflow-hidden border border-slate-700">
+                <div id="learn-progress-bar" class="bg-gradient-to-r from-sky-400 to-emerald-400 h-full rounded-full w-0 transition-all duration-100"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sample Confirmation Review Modal Overlay -->
+          <div id="sample-review-modal" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md z-40 hidden flex flex-col items-center justify-center p-4 text-center space-y-2.5">
+            <div class="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-lg font-bold border border-emerald-500/30 flex-shrink-0">
+              <i class="fa-solid fa-check"></i>
+            </div>
+            <div class="space-y-1 max-w-xs">
+              <h3 id="review-modal-title" class="text-sm sm:text-base font-bold text-white leading-tight">動態樣本 1 擷取完成！</h3>
+              <p class="text-[11px] sm:text-xs text-slate-300 leading-normal">請選擇確定收錄此軌跡樣本，或取消重新錄製。</p>
+            </div>
+            
+            <div class="flex flex-col sm:flex-row gap-1.5 w-full max-w-xs pt-1">
+              <button id="btn-accept-sample" class="py-2 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 shadow-lg active:scale-95 transition">
+                <i class="fa-solid fa-circle-check text-xs flex-shrink-0"></i>
+                <span class="whitespace-nowrap truncate">確定收錄此樣本</span>
+              </button>
+              <button id="btn-rerecord-sample" class="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-semibold text-xs border border-amber-500/30 flex items-center justify-center space-x-1.5 active:scale-95 transition">
+                <i class="fa-solid fa-rotate-left text-xs flex-shrink-0"></i>
+                <span class="whitespace-nowrap truncate">重錄此樣本</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recording Action Buttons Bar -->
+        <div class="space-y-2 pt-0.5">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <!-- Start Record Sample Button -->
+            <button id="btn-start-record" class="py-2.5 px-3 rounded-xl bg-gradient-to-r from-sky-500 to-brand-600 hover:from-sky-400 hover:to-brand-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 shadow-lg shadow-sky-500/20 active:scale-95 transition">
+              <i class="fa-solid fa-circle-dot text-rose-300 animate-pulse flex-shrink-0"></i>
+              <span id="btn-start-record-text" class="whitespace-nowrap truncate">錄製動態樣本 1 / 3</span>
+            </button>
+
+            <!-- Save Final Word Gesture Button -->
+            <button id="btn-save-final-gesture" class="py-2.5 px-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center space-x-2 shadow-lg shadow-emerald-500/20 active:scale-95 transition disabled:opacity-40 disabled:pointer-events-none" disabled>
+              <i class="fa-solid fa-floppy-disk flex-shrink-0"></i>
+              <span class="whitespace-nowrap truncate">儲存手語詞彙</span>
+            </button>
+          </div>
+
+          <!-- Clear/Abandon Button -->
+          <div class="flex justify-end">
+            <button id="btn-cancel-recording-flow" class="text-[11px] text-rose-400 hover:text-rose-300 py-1 px-2 flex items-center gap-1 transition">
+              <i class="fa-solid fa-trash-can text-[10px]"></i>
+              <span class="whitespace-nowrap">清空錄製進度</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ================= TAB 3: GESTURE DATABASE ================= -->
+    <section id="tab-database" class="tab-content hidden p-3 sm:p-4 max-w-xl sm:max-w-2xl mx-auto space-y-3.5">
+      <!-- Database Header & Stats -->
+      <div class="glass-card p-3.5 sm:p-4 rounded-2xl space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center space-x-2 text-purple-400 font-bold text-sm sm:text-base min-w-0">
+            <i class="fa-solid fa-book-bookmark flex-shrink-0"></i>
+            <h2 class="truncate">手語詞庫管理 (Holistic DTW DB)</h2>
+          </div>
+          <span id="db-count-badge" class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-[11px] sm:text-xs font-semibold border border-purple-500/30 whitespace-nowrap flex-shrink-0">
+            共 2 個手語
+          </span>
+        </div>
+        <p class="text-[11px] sm:text-xs text-slate-400 leading-relaxed">
+          系統預設保留標準詞彙「你好」、「多謝」。自訂手語支援 45 幀多階段動態軌跡樣本備份匯出與匯入。
+        </p>
+
+        <!-- Import / Export Action Buttons -->
+        <div class="grid grid-cols-2 gap-2 pt-1">
+          <button id="btn-export-db" class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs flex items-center justify-center space-x-1.5 border border-slate-700 active:scale-95 transition">
+            <i class="fa-solid fa-file-export text-sky-400 flex-shrink-0"></i>
+            <span class="whitespace-nowrap truncate">匯出詞庫 (JSON)</span>
+          </button>
+          
+          <label class="py-2 px-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium text-xs flex items-center justify-center space-x-1.5 border border-slate-700 active:scale-95 transition cursor-pointer">
+            <i class="fa-solid fa-file-import text-emerald-400 flex-shrink-0"></i>
+            <span class="whitespace-nowrap truncate">匯入詞庫 (JSON)</span>
+            <input type="file" id="file-import-db" accept=".json" class="hidden">
+          </label>
+        </div>
+      </div>
+
+      <!-- Gestures List Container -->
+      <div class="space-y-2">
+        <h3 class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-1">已載入手語清單</h3>
+        <div id="gesture-list-container" class="space-y-2">
+          <!-- Dynamic Gesture Cards inserted via JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= TAB 4: SETTINGS ================= -->
+    <section id="tab-settings" class="tab-content hidden p-3 sm:p-4 max-w-xl sm:max-w-2xl mx-auto space-y-3.5">
+      <div class="glass-card p-3.5 sm:p-4 rounded-2xl space-y-3.5">
+        <div class="flex items-center space-x-2 text-slate-300 font-bold text-sm sm:text-base min-w-0">
+          <i class="fa-solid fa-sliders text-sky-400 flex-shrink-0"></i>
+          <h2 class="truncate">系統設定 (Engine Parameters)</h2>
+        </div>
+
+        <div class="space-y-3.5 text-xs">
+          <!-- Confidence Threshold Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-slate-300 font-medium">
+              <label for="slider-confidence" class="truncate">DTW 辨識靈敏度門檻 (Confidence)</label>
+              <span id="slider-confidence-val" class="text-sky-400 font-mono flex-shrink-0 ml-1">60%</span>
+            </div>
+            <input type="range" id="slider-confidence" min="40" max="90" value="60" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+            <p class="text-[10px] text-slate-500">數值愈高要求軌跡愈精準；數值低較易感應。</p>
+          </div>
+
+          <!-- Motion Velocity Threshold Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-slate-300 font-medium">
+              <label for="slider-velocity" class="truncate">靜止鎖定手速門檻 (Velocity Lock Threshold)</label>
+              <span id="slider-velocity-val" class="text-amber-400 font-mono flex-shrink-0 ml-1">0.025</span>
+            </div>
+            <input type="range" id="slider-velocity" min="0.005" max="0.08" step="0.005" value="0.025" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500">
+            <p class="text-[10px] text-slate-500">低於此手速時視為靜止停留狀態，防止連續重複誤觸發。</p>
+          </div>
+
+          <!-- Auto-hold delay for appending sentence -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-slate-300 font-medium">
+              <label for="slider-hold" class="truncate">手勢維持確認時間 (Hold Duration)</label>
+              <span id="slider-hold-val" class="text-sky-400 font-mono flex-shrink-0 ml-1">0.6秒</span>
+            </div>
+            <input type="range" id="slider-hold" min="0.3" max="2.0" step="0.1" value="0.6" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+            <p class="text-[10px] text-slate-500">動作維持此時長才會自動加入句子。</p>
+          </div>
+
+          <!-- Skeleton Rendering Color Theme -->
+          <div class="space-y-1">
+            <label class="block text-slate-300 font-medium">雙手骨骼畫線顏色 (Skeleton Color)</label>
+            <select id="select-skeleton-theme" class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white focus:outline-none focus:border-sky-500 text-xs">
+              <option value="cyan">螢光藍 (Neon Cyan)</option>
+              <option value="emerald">翡翠綠 (Emerald Green)</option>
+              <option value="purple">霓虹紫 (Neon Purple)</option>
+            </select>
+          </div>
+
+          <!-- Clear Reset System -->
+          <div class="pt-3 border-t border-slate-800">
+            <button id="btn-reset-db" class="w-full py-2.5 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-medium text-xs border border-rose-500/30 flex items-center justify-center space-x-2 transition">
+              <i class="fa-solid fa-rotate-left flex-shrink-0"></i>
+              <span class="whitespace-nowrap truncate">重置為系統預設詞庫（僅「你好」、「多謝」）</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="glass-panel fixed bottom-0 left-0 right-0 z-40 border-t border-slate-800/80 px-2 py-1.5 flex-shrink-0">
+    <div class="max-w-md mx-auto grid grid-cols-4 gap-1">
+      <button data-target="tab-recognize" class="nav-tab active flex flex-col items-center py-1 px-1 rounded-xl text-sky-400 transition">
+        <i class="fa-solid fa-camera text-sm sm:text-base mb-0.5 flex-shrink-0"></i>
+        <span class="text-[9px] sm:text-[10px] font-medium whitespace-nowrap">即時辨識</span>
+      </button>
+      <button data-target="tab-learn" class="nav-tab flex flex-col items-center py-1 px-1 rounded-xl text-slate-400 hover:text-slate-200 transition">
+        <i class="fa-solid fa-graduation-cap text-sm sm:text-base mb-0.5 flex-shrink-0"></i>
+        <span class="text-[9px] sm:text-[10px] font-medium whitespace-nowrap">手語學習</span>
+      </button>
+      <button data-target="tab-database" class="nav-tab flex flex-col items-center py-1 px-1 rounded-xl text-slate-400 hover:text-slate-200 transition">
+        <i class="fa-solid fa-book-bookmark text-sm sm:text-base mb-0.5 flex-shrink-0"></i>
+        <span class="text-[9px] sm:text-[10px] font-medium whitespace-nowrap">詞庫管理</span>
+      </button>
+      <button data-target="tab-settings" class="nav-tab flex flex-col items-center py-1 px-1 rounded-xl text-slate-400 hover:text-slate-200 transition">
+        <i class="fa-solid fa-sliders text-sm sm:text-base mb-0.5 flex-shrink-0"></i>
+        <span class="text-[9px] sm:text-[10px] font-medium whitespace-nowrap">系統設定</span>
+      </button>
+    </div>
+  </nav>
+
+  <script>
+    /* Service Worker Registration for PWA */
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('SW Registered!', reg))
+          .catch(err => console.error('SW Register Error:', err));
+      });
+    }
+
+    /* =========================================================================
+       HKSL RECOGNITION AI - HOLISTIC DUAL-HAND & BODY & FACE ENGINE (V3)
+       ========================================================================= */
+
+    // Application Global State
+    const state = {
+      activeTab: 'tab-recognize',
+      isCameraFacingUser: true,
+      isMirrored: true,
+      confidenceThreshold: 0.60,
+      velocityLockThreshold: 0.025, 
+      holdDuration: 0.6, 
+      skeletonTheme: 'cyan',
+      
+      // 45 幀動態滑動視窗 (約 1.5 秒)
+      liveFrameBuffer: [],
+      maxBufferFrames: 45,
+      
+      // 即時狀態感測
+      currentHandVelocity: 0.0,
+      isMotionLocked: false,
+      lastDetectedLabel: '',
+      labelHoldStartTime: 0,
+      sentence: [],
+      
+      // FPS & Latency stats
+      fps: 0,
+      frameCount: 0,
+      lastFpsUpdate: Date.now(),
+      
+      // Multi-Sample Learning Mode
+      isRecording: false,
+      currentSampleVectors: [], 
+      confirmedSamples: [],     
+      recordingTargetFrames: 45,
+      
+      // Gesture Vector Database
+      gesturesDB: []
+    };
+
+    // Preset HKSL Rules
+    const DEFAULT_HKSL_TEMPLATES = [
+      { id: 'preset-hello', name: '你好', tts: '你好', isPreset: true, type: 'rule', ruleKey: 'HELLO' },
+      { id: 'preset-thanks', name: '多謝', tts: '多謝', isPreset: true, type: 'rule', ruleKey: 'THANK_YOU' }
+    ];
+
+    // DOM References
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output-canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const learnCanvas = document.getElementById('learn-canvas');
+    const learnCtx = learnCanvas.getContext('2d');
+
+    const camLoading = document.getElementById('cam-loading');
+    const fpsValEl = document.getElementById('fps-val');
+    const latencyValEl = document.getElementById('latency-val');
+    const velValEl = document.getElementById('vel-val');
+    
+    const detectedLabelEl = document.getElementById('detected-label');
+    const detectedConfEl = document.getElementById('detected-confidence');
+    const sentenceBox = document.getElementById('sentence-box');
+    
+    function showToast(message, type = 'info') {
+      const toastContainer = document.getElementById('toast-container');
+      const toastMsg = document.getElementById('toast-msg');
+      const toastIcon = document.getElementById('toast-icon');
+
+      toastMsg.innerText = message;
+      
+      if (type === 'success') {
+        toastIcon.className = 'fa-solid fa-circle-check text-emerald-400 text-base flex-shrink-0';
+      } else if (type === 'error') {
+        toastIcon.className = 'fa-solid fa-circle-exclamation text-rose-400 text-base flex-shrink-0';
+      } else {
+        toastIcon.className = 'fa-solid fa-circle-info text-sky-400 text-base flex-shrink-0';
+      }
+
+      toastContainer.classList.remove('opacity-0', 'translate-y-2');
+      toastContainer.classList.add('opacity-100', 'translate-y-0');
+
+      setTimeout(() => {
+        toastContainer.classList.remove('opacity-100', 'translate-y-0');
+        toastContainer.classList.add('opacity-0', 'translate-y-2');
+      }, 2300);
+    }
+
+    /* =========================================================================
+       核心優化算子 1 & 2: 座標正規化 + 關節 3D 角度計算
+       ========================================================================= */
+
+    /**
+     * 計算三點 (A, B, C) 在 3D 空間形成的夾角 (弧度與角度)
+     * B 為頂點 (例如：左肩-左肘-左手腕，B 為左肘)
+     */
+    function calculateAngle3D(pointA, pointB, pointC) {
+      if (!pointA || !pointB || !pointC) return 0;
+      
+      const v1 = {
+        x: pointA.x - pointB.x,
+        y: pointA.y - pointB.y,
+        z: (pointA.z || 0) - (pointB.z || 0)
+      };
+      const v2 = {
+        x: pointC.x - pointB.x,
+        y: pointC.y - pointB.y,
+        z: (pointC.z || 0) - (pointB.z || 0)
+      };
+
+      const dotProduct = (v1.x * v2.x) + (v1.y * v2.y) + (v1.z * v2.z);
+      const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z);
+      const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y + v2.z * v2.z);
+
+      if (mag1 * mag2 === 0) return 0;
+
+      let cosTheta = dotProduct / (mag1 * mag2);
+      cosTheta = Math.max(-1.0, Math.min(1.0, cosTheta)); // 限制在 [-1, 1] 避免浮點數誤差
+      return Math.acos(cosTheta); // 回傳弧度 RAD (0 ~ Math.PI)
+    }
+
+    /**
+     * 抽取 Holistic (Pose + Left Hand + Right Hand + Face) 高級特徵向量
+     * 優化 1: 以「雙肩中心點」作為系統原點 (0,0,0)，肩膀寬度作為縮放 Scale
+     * 優化 2: 計算身體與雙手關節角度，消除身材胖瘦/高矮影響
+     */
+    function extractHolisticFeatureVector(results) {
+      const pose = results.poseLandmarks;
+      const leftHand = results.leftHandLandmarks;
+      const rightHand = results.rightHandLandmarks;
+      const face = results.faceLandmarks;
+
+      const vector = [];
+
+      // 1. 定義原點 Origin & 軀幹比例 Scale
+      let origin = { x: 0.5, y: 0.5, z: 0 };
+      let shoulderScale = 0.2; // 預設值
+
+      if (pose && pose[11] && pose[12]) {
+        // 11 = Left Shoulder, 12 = Right Shoulder
+        const leftShoulder = pose[11];
+        const rightShoulder = pose[12];
+        
+        origin.x = (leftShoulder.x + rightShoulder.x) / 2;
+        origin.y = (leftShoulder.y + rightShoulder.y) / 2;
+        origin.z = ((leftShoulder.z || 0) + (rightShoulder.z || 0)) / 2;
+
+        const dist = Math.hypot(
+          leftShoulder.x - rightShoulder.x,
+          leftShoulder.y - rightShoulder.y,
+          (leftShoulder.z || 0) - (rightShoulder.z || 0)
+        );
+        if (dist > 0.01) shoulderScale = dist;
+      }
+
+      // 輔助函式：座標正規化
+      const normalizePoint = (pt) => {
+        if (!pt) return [0, 0, 0];
+        return [
+          (pt.x - origin.x) / shoulderScale,
+          (pt.y - origin.y) / shoulderScale,
+          ((pt.z || 0) - origin.z) / shoulderScale
+        ];
+      };
+
+      // 2. 身體關節角度算子 (Pose Angles)
+      if (pose) {
+        // 左手臂角度: 左肩(11) - 左肘(13) - 左手腕(15)
+        const leftElbowAngle = calculateAngle3D(pose[11], pose[13], pose[15]);
+        // 右手臂角度: 右肩(12) - 右肘(14) - 右手腕(16)
+        const rightElbowAngle = calculateAngle3D(pose[12], pose[14], pose[16]);
+        // 左肩膀抬升角度: 左髖(23) - 左肩(11) - 左肘(13)
+        const leftShoulderAngle = calculateAngle3D(pose[23], pose[11], pose[13]);
+        // 右肩膀抬升角度: 右髖(24) - 右肩(12) - 右肘(14)
+        const rightShoulderAngle = calculateAngle3D(pose[24], pose[12], pose[14]);
+
+        vector.push(leftElbowAngle, rightElbowAngle, leftShoulderAngle, rightShoulderAngle);
+      } else {
+        vector.push(0, 0, 0, 0);
+      }
+
+      // 3. 提取雙手關節 (Left & Right Hands: 正規化點與手指彎曲角度)
+      const extractHandData = (handLandmarks, wristPosePt) => {
+        if (!handLandmarks || handLandmarks.length < 21) {
+          return new Array(21 * 3 + 5).fill(0); // 21點正規化座標(63) + 5隻手指角度(5)
+        }
+
+        const handVec = [];
+        // 手掌中心與局部 Scale
+        const wrist = handLandmarks[0];
+        const middleMcp = handLandmarks[9];
+        const handScale = Math.hypot(
+          middleMcp.x - wrist.x,
+          middleMcp.y - wrist.y,
+          (middleMcp.z || 0) - (wrist.z || 0)
+        ) || 0.05;
+
+        // 手掌 21 個 Keypoints 正規化 (相對於雙肩原點)
+        for (let i = 0; i < 21; i++) {
+          const np = normalizePoint(handLandmarks[i]);
+          handVec.push(np[0], np[1], np[2]);
+        }
+
+        // 5 隻手指關節彎曲角度 (MCP-PIP-DIP/TIP 夾角)
+        const fingerJoints = [
+          [1, 2, 4],   // 姆指
+          [5, 6, 8],   // 食指
+          [9, 10, 12], // 中指
+          [13, 14, 16],// 無名指
+          [17, 18, 20] // 小指
+        ];
+
+        for (const j of fingerJoints) {
+          const angle = calculateAngle3D(
+            handLandmarks[j[0]],
+            handLandmarks[j[1]],
+            handLandmarks[j[2]]
+          );
+          handVec.push(angle);
+        }
+
+        return handVec;
+      };
+
+      const leftHandData = extractHandData(leftHand, pose ? pose[15] : null);
+      const rightHandData = extractHandData(rightHand, pose ? pose[16] : null);
+
+      vector.push(...leftHandData);
+      vector.push(...rightHandData);
+
+      // 4. 面部表情關鍵點 (選取嘴唇與眉毛動態: 10個核心微表情點)
+      if (face && face.length > 300) {
+        // 嘴唇高度、寬度、眉毛高低
+        const topLip = face[13], bottomLip = face[14];
+        const leftMouth = face[61], rightMouth = face[291];
+        
+        const mouthHeight = Math.hypot(topLip.x - bottomLip.x, topLip.y - bottomLip.y) / shoulderScale;
+        const mouthWidth = Math.hypot(leftMouth.x - rightMouth.x, leftMouth.y - rightMouth.y) / shoulderScale;
+        
+        vector.push(mouthHeight, mouthWidth);
+      } else {
+        vector.push(0, 0);
+      }
+
+      return vector;
+    }
+
+    /* =========================================================================
+       計算手部動態速度
+       ========================================================================= */
+    function calculateHandVelocity(buffer) {
+      if (!buffer || buffer.length < 5) return 0;
+      
+      const windowSize = 5;
+      const recent = buffer.slice(-windowSize);
+      let totalDisplacement = 0;
+
+      for (let i = 1; i < recent.length; i++) {
+        const v1 = recent[i - 1];
+        const v2 = recent[i];
+        
+        let frameDiff = 0;
+        const len = Math.min(v1.length, v2.length);
+        for (let k = 0; k < len; k++) {
+          frameDiff += Math.abs(v2[k] - v1[k]);
+        }
+        totalDisplacement += (frameDiff / len);
+      }
+
+      return totalDisplacement / (windowSize - 1);
+    }
+
+    function calculateCosineSimilarity(vecA, vecB) {
+      if (!vecA || !vecB || vecA.length !== vecB.length) return 0;
+      let dot = 0, normA = 0, normB = 0;
+      for (let i = 0; i < vecA.length; i++) {
+        dot += vecA[i] * vecB[i];
+        normA += vecA[i] * vecA[i];
+        normB += vecB[i] * vecB[i];
+      }
+      if (normA === 0 || normB === 0) return 0;
+      return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
+    /* =========================================================================
+       核心優化算子 3: 動態時間規整演算法 (Dynamic Time Warping - DTW)
+       ========================================================================= */
+    function calculateDTWSimilarity(seqA, seqB) {
+      if (!seqA || !seqB || seqA.length === 0 || seqB.length === 0) return 0;
+
+      const N = seqA.length;
+      const M = seqB.length;
+      
+      const dtw = Array.from({ length: N + 1 }, () => new Array(M + 1).fill(Infinity));
+      dtw[0][0] = 0;
+
+      for (let i = 1; i <= N; i++) {
+        for (let j = 1; j <= M; j++) {
+          const sim = calculateCosineSimilarity(seqA[i - 1], seqB[j - 1]);
+          const cost = 1.0 - sim;
+          
+          dtw[i][j] = cost + Math.min(
+            dtw[i - 1][j],    // 彈性拉伸 (慢動作)
+            dtw[i][j - 1],    // 彈性壓縮 (快動作)
+            dtw[i - 1][j - 1] // 對齊
+          );
+        }
+      }
+
+      const totalDistance = dtw[N][M];
+      const maxPathLength = Math.max(N, M);
+      const normalizedDistance = totalDistance / maxPathLength;
+      
+      return Math.max(0, 1.0 - normalizedDistance);
+    }
+
+    // Evaluator for Preset HKSL Signs
+    function evaluateGeometricRules(results) {
+      const pose = results.poseLandmarks;
+      const leftHand = results.leftHandLandmarks;
+      const rightHand = results.rightHandLandmarks;
+
+      if (!rightHand && !leftHand) return null;
+
+      const activeHand = rightHand || leftHand;
+      const wrist = activeHand[0];
+
+      // 1. 「你好」: 雙手/單手手掌展開在肩膀上方揮動
+      const isHandUp = wrist.y < (pose && pose[11] ? pose[11].y : 0.6);
+      if (isHandUp) {
+        return { name: '你好', confidence: 0.88, tts: '你好' };
+      }
+
+      // 2. 「多謝」: 檢測動態曲指
+      if (state.liveFrameBuffer.length >= 8) {
+        const vel = state.currentHandVelocity;
+        if (vel > 0.012 && wrist.y < 0.8) {
+          return { name: '多謝', confidence: 0.89, tts: '多謝' };
+        }
+      }
+
+      return null;
+    }
+
+    /* =========================================================================
+       分類主引擎 (Classify Sequence)
+       ========================================================================= */
+    function classifyDynamicSequence(results) {
+      const currentFrameVec = extractHolisticFeatureVector(results);
+      
+      state.liveFrameBuffer.push(currentFrameVec);
+      if (state.liveFrameBuffer.length > state.maxBufferFrames) {
+        state.liveFrameBuffer.shift();
+      }
+
+      state.currentHandVelocity = calculateHandVelocity(state.liveFrameBuffer);
+      velValEl.innerText = state.currentHandVelocity.toFixed(3);
+
+      if (state.currentHandVelocity < state.velocityLockThreshold) {
+        state.isMotionLocked = true;
+      } else {
+        state.isMotionLocked = false;
+      }
+
+      let bestMatch = null;
+      let highestScore = 0;
+
+      for (const gesture of state.gesturesDB) {
+        if (gesture.samples && gesture.samples.length > 0) {
+          let bestSampleSim = 0;
+          for (const sampleSequence of gesture.samples) {
+            const dtwSim = calculateDTWSimilarity(state.liveFrameBuffer, sampleSequence);
+            if (dtwSim > bestSampleSim) bestSampleSim = dtwSim;
+          }
+
+          if (bestSampleSim > highestScore) {
+            highestScore = bestSampleSim;
+            bestMatch = { name: gesture.name, confidence: bestSampleSim, tts: gesture.tts || gesture.name };
+          }
+        }
+      }
+
+      const ruleResult = evaluateGeometricRules(results);
+      if (ruleResult) {
+        if (!bestMatch || ruleResult.confidence > highestScore) {
+          return ruleResult;
+        }
+      }
+
+      if (bestMatch && bestMatch.confidence >= state.confidenceThreshold) {
+        return bestMatch;
+      }
+
+      return null;
+    }
+
+    function getThemeColors() {
+      switch(state.skeletonTheme) {
+        case 'emerald': return { line: '#10b981', point: '#34d399' };
+        case 'purple': return { line: '#a855f7', point: '#c084fc' };
+        case 'cyan': default: return { line: '#0ea5e9', point: '#38bdf8' };
+      }
+    }
+
+    function onHolisticResults(results) {
+      if (state.activeTab !== 'tab-recognize' && state.activeTab !== 'tab-learn') return;
+
+      const startTime = performance.now();
+
+      if (!camLoading.classList.contains('hidden')) {
+        camLoading.classList.add('hidden');
+      }
+
+      state.frameCount++;
+      const now = Date.now();
+      if (now - state.lastFpsUpdate >= 1000) {
+        state.fps = state.frameCount;
+        state.frameCount = 0;
+        state.lastFpsUpdate = now;
+        fpsValEl.innerText = state.fps;
+      }
+
+      if (results.image) {
+        if (canvasElement.width !== results.image.width) {
+          canvasElement.width = results.image.width;
+          canvasElement.height = results.image.height;
+          learnCanvas.width = results.image.width;
+          learnCanvas.height = results.image.height;
+        }
+      }
+
+      const colors = getThemeColors();
+
+      // ================= TAB: RECOGNIZE =================
+      if (state.activeTab === 'tab-recognize') {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        if (state.isMirrored) {
+          canvasCtx.translate(canvasElement.width, 0);
+          canvasCtx.scale(-1, 1);
+        }
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+        // 繪製 Holistic 骨架
+        if (results.poseLandmarks) {
+          drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: 'rgba(255,255,255,0.3)', lineWidth: 2 });
+        }
+        if (results.leftHandLandmarks) {
+          drawConnectors(canvasCtx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: colors.line, lineWidth: 2.5 });
+          drawLandmarks(canvasCtx, results.leftHandLandmarks, { color: colors.point, radius: 3 });
+        }
+        if (results.rightHandLandmarks) {
+          drawConnectors(canvasCtx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: colors.line, lineWidth: 2.5 });
+          drawLandmarks(canvasCtx, results.rightHandLandmarks, { color: colors.point, radius: 3 });
+        }
+
+        const classification = classifyDynamicSequence(results);
+        handleDetectionLogic(classification);
+        
+        canvasCtx.restore();
+      }
+
+      // ================= TAB: LEARN =================
+      if (state.activeTab === 'tab-learn') {
+        learnCtx.save();
+        learnCtx.clearRect(0, 0, learnCanvas.width, learnCanvas.height);
+        if (state.isMirrored) {
+          learnCtx.translate(learnCanvas.width, 0);
+          learnCtx.scale(-1, 1);
+        }
+        learnCtx.drawImage(results.image, 0, 0, learnCanvas.width, learnCanvas.height);
+
+        if (results.poseLandmarks) {
+          drawConnectors(learnCtx, results.poseLandmarks, POSE_CONNECTIONS, { color: 'rgba(255,255,255,0.3)', lineWidth: 2 });
+        }
+        if (results.leftHandLandmarks) {
+          drawConnectors(learnCtx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: '#10b981', lineWidth: 2.5 });
+          drawLandmarks(learnCtx, results.leftHandLandmarks, { color: '#34d399', radius: 3 });
+        }
+        if (results.rightHandLandmarks) {
+          drawConnectors(learnCtx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: '#10b981', lineWidth: 2.5 });
+          drawLandmarks(learnCtx, results.rightHandLandmarks, { color: '#34d399', radius: 3 });
+        }
+
+        if (state.isRecording) {
+          const vec = extractHolisticFeatureVector(results);
+          state.currentSampleVectors.push(vec);
+          updateRecordingProgress();
+        }
+        learnCtx.restore();
+      }
+
+      const latency = Math.round(performance.now() - startTime);
+      latencyValEl.innerText = latency;
+    }
+
+    function handleDetectionLogic(classification) {
+      if (classification) {
+        const confPercent = Math.round(classification.confidence * 100);
+        
+        if (state.isMotionLocked) {
+          detectedLabelEl.innerText = `${classification.name} (靜止停留)`;
+        } else {
+          detectedLabelEl.innerText = classification.name;
+        }
+        
+        detectedConfEl.innerText = `${confPercent}%`;
+
+        const now = Date.now();
+        if (classification.name === state.lastDetectedLabel) {
+          const heldTimeSeconds = (now - state.labelHoldStartTime) / 1000;
+          
+          if (heldTimeSeconds >= state.holdDuration) {
+            const chkAuto = document.getElementById('chk-auto-append');
+            if (chkAuto && chkAuto.checked) {
+              appendWordToSentence(classification.name, classification.tts);
+            }
+            state.labelHoldStartTime = now + 1500; 
+          }
+        } else {
+          state.lastDetectedLabel = classification.name;
+          state.labelHoldStartTime = now;
+        }
+      } else {
+        detectedLabelEl.innerText = state.isMotionLocked ? '靜止中 (解鎖動作)' : 'Holistic DTW 匹配中...';
+        detectedConfEl.innerText = '0%';
+        state.labelHoldStartTime = 0;
+      }
+    }
+
+    function appendWordToSentence(word, ttsText) {
+      if (state.sentence.length > 0 && state.sentence[state.sentence.length - 1].word === word) {
+        return;
+      }
+      state.sentence.push({ word, tts: ttsText || word });
+      renderSentenceUI();
+      speakCantonese(ttsText || word);
+    }
+
+    function renderSentenceUI() {
+      if (state.sentence.length === 0) {
+        sentenceBox.innerHTML = `<span class="text-slate-500 text-xs sm:text-sm font-normal italic">請在鏡頭前展示單手或雙手動作...</span>`;
+        return;
+      }
+      sentenceBox.innerHTML = state.sentence.map((item) => `
+        <span class="inline-flex items-center px-2.5 py-0.5 sm:py-1 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30 font-semibold text-xs sm:text-base shadow-sm">
+          ${item.word}
+        </span>
+      `).join('');
+      sentenceBox.scrollTop = sentenceBox.scrollHeight;
+    }
+
+    function speakCantonese(text) {
+      if (!('speechSynthesis' in window) || !text) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = window.speechSynthesis.getVoices();
+      const cantoneseVoice = voices.find(v => v.lang.includes('zh-HK') || v.lang.includes('yue')) ||
+                             voices.find(v => v.lang.includes('zh')) || null;
+      if (cantoneseVoice) utterance.voice = cantoneseVoice;
+      utterance.lang = 'zh-HK';
+      utterance.rate = 0.95;
+      utterance.pitch = 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    /* =========================================================================
+       學習模式與樣本錄製
+       ========================================================================= */
+
+    const btnStartRecord = document.getElementById('btn-start-record');
+    const btnSaveFinalGesture = document.getElementById('btn-save-final-gesture');
+    const btnCancelRecordingFlow = document.getElementById('btn-cancel-recording-flow');
+    const btnAcceptSample = document.getElementById('btn-accept-sample');
+    const btnRerecordSample = document.getElementById('btn-rerecord-sample');
+
+    const learnOverlay = document.getElementById('learn-overlay');
+    const sampleReviewModal = document.getElementById('sample-review-modal');
+    const reviewModalTitle = document.getElementById('review-modal-title');
+    const learnCountdown = document.getElementById('learn-countdown');
+    const learnStatus = document.getElementById('learn-status');
+    const learnProgressBar = document.getElementById('learn-progress-bar');
+    const learnProgressText = document.getElementById('learn-progress-text');
+    const learnSampleTitle = document.getElementById('learn-sample-title');
+    const recIndicator = document.getElementById('rec-indicator');
+
+    function resetRecordingFlow() {
+      state.isRecording = false;
+      state.currentSampleVectors = [];
+      state.confirmedSamples = [];
+
+      learnOverlay.classList.add('hidden');
+      sampleReviewModal.classList.add('hidden');
+      recIndicator.classList.add('hidden');
+
+      updateSampleCardsUI();
+      updateRecordingButtonsUI();
+    }
+
+    function updateSampleCardsUI() {
+      const count = state.confirmedSamples.length;
+      document.getElementById('sample-count-text').innerText = count;
+
+      for (let i = 1; i <= 3; i++) {
+        const card = document.getElementById(`sample-card-${i}`);
+        const statusText = card.querySelector('.sample-status-text');
+        
+        if (i <= count) {
+          card.className = "p-1.5 sm:p-2 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-center space-y-0.5 transition-all shadow-sm";
+          statusText.className = "sample-status-text text-[10px] sm:text-xs font-bold text-emerald-400 whitespace-nowrap truncate";
+          statusText.innerHTML = '<i class="fa-solid fa-check text-[9px] mr-0.5"></i>已收錄 (45幀)';
+        } else if (i === count + 1) {
+          card.className = "p-1.5 sm:p-2 rounded-xl bg-sky-950/40 border border-sky-500/50 text-center space-y-0.5 transition-all ring-1 ring-sky-500/30";
+          statusText.className = "sample-status-text text-[10px] sm:text-xs font-bold text-sky-400 animate-pulse whitespace-nowrap truncate";
+          statusText.innerText = '待錄製';
+        } else {
+          card.className = "p-1.5 sm:p-2 rounded-xl bg-slate-900 border border-slate-800 text-center space-y-0.5 transition-all opacity-50";
+          statusText.className = "sample-status-text text-[10px] sm:text-xs font-bold text-slate-500 whitespace-nowrap truncate";
+          statusText.innerText = '未開始';
+        }
+      }
+    }
+
+    function updateRecordingButtonsUI() {
+      const count = state.confirmedSamples.length;
+      const btnText = document.getElementById('btn-start-record-text');
+
+      if (count === 0) {
+        btnText.innerText = '錄製動態樣本 1 / 3';
+        btnStartRecord.disabled = false;
+        btnSaveFinalGesture.disabled = true;
+      } else if (count < 3) {
+        btnText.innerText = `錄製下一個樣本 (${count + 1} / 3)`;
+        btnStartRecord.disabled = false;
+        btnSaveFinalGesture.disabled = false;
+      } else {
+        btnText.innerText = '已完成全部 3 次錄製';
+        btnStartRecord.disabled = true;
+        btnSaveFinalGesture.disabled = false;
+      }
+    }
+
+    function startSampleRecordingProcess() {
+      const nameInput = document.getElementById('input-sign-name');
+      const name = nameInput.value.trim();
+      
+      if (!name) {
+        showToast('請先輸入手語詞彙名稱', 'error');
+        nameInput.focus();
+        return;
+      }
+
+      state.isRecording = false;
+      state.currentSampleVectors = [];
+      
+      sampleReviewModal.classList.add('hidden');
+      learnOverlay.classList.remove('hidden');
+      recIndicator.classList.add('hidden');
+      
+      const sampleNum = state.confirmedSamples.length + 1;
+      learnSampleTitle.innerText = `樣本 ${sampleNum} 軌跡進度 (45 幀)`;
+      learnProgressBar.style.width = '0%';
+      learnProgressText.innerText = `0 / ${state.recordingTargetFrames}`;
+      
+      let countdown = 3;
+      learnCountdown.innerText = countdown;
+      learnCountdown.className = 'text-sm sm:text-base font-black text-sky-400 font-mono';
+      learnStatus.innerText = `準備展示樣本 ${sampleNum} 多階段手語動作...`;
+
+      const timer = setInterval(() => {
+        countdown--;
+        if (countdown > 0) {
+          learnCountdown.innerText = countdown;
+        } else {
+          clearInterval(timer);
+          learnCountdown.innerText = 'REC';
+          learnCountdown.className = 'text-xs font-black text-rose-400 font-mono';
+          learnStatus.innerText = '請完整展示手語動作...';
+          recIndicator.classList.remove('hidden');
+          state.isRecording = true;
+        }
+      }, 1000);
+    }
+
+    function updateRecordingProgress() {
+      const current = state.currentSampleVectors.length;
+      const target = state.recordingTargetFrames;
+      const percent = Math.min(100, Math.round((current / target) * 100));
+      
+      learnProgressBar.style.width = `${percent}%`;
+      learnProgressText.innerText = `${current} / ${target}`;
+
+      if (current >= target) {
+        state.isRecording = false;
+        learnOverlay.classList.add('hidden');
+        
+        const sampleNum = state.confirmedSamples.length + 1;
+        reviewModalTitle.innerText = `45 幀動態樣本 ${sampleNum} / 3 擷取完成！`;
+        sampleReviewModal.classList.remove('hidden');
+      }
+    }
+
+    btnStartRecord.addEventListener('click', startSampleRecordingProcess);
+
+    btnAcceptSample.addEventListener('click', () => {
+      sampleReviewModal.classList.add('hidden');
+      
+      if (state.currentSampleVectors.length > 0) {
+        state.confirmedSamples.push([...state.currentSampleVectors]);
+        state.currentSampleVectors = [];
+      }
+
+      updateSampleCardsUI();
+      updateRecordingButtonsUI();
+
+      const count = state.confirmedSamples.length;
+      if (count < 3) {
+        showToast(`已收錄樣本 ${count}！請繼續錄製下一個樣本。`, 'success');
+      } else {
+        showToast(`已完成 3 個樣本錄製！請點擊『儲存手語詞彙』。`, 'success');
+      }
+    });
+
+    btnRerecordSample.addEventListener('click', () => {
+      sampleReviewModal.classList.add('hidden');
+      state.currentSampleVectors = [];
+      startSampleRecordingProcess();
+    });
+
+    btnSaveFinalGesture.addEventListener('click', saveFinalGestureWord);
+
+    function saveFinalGestureWord() {
+      const nameInput = document.getElementById('input-sign-name');
+      const ttsInput = document.getElementById('input-sign-tts');
+
+      const name = nameInput.value.trim();
+      if (!name) {
+        showToast('請輸入手語詞彙名稱', 'error');
+        nameInput.focus();
+        return;
+      }
+
+      if (state.confirmedSamples.length === 0) {
+        showToast('尚未收錄任何動作樣本', 'error');
+        return;
+      }
+
+      const tts = ttsInput.value.trim() || name;
+      const sampleCount = state.confirmedSamples.length;
+
+      const newGesture = {
+        id: 'custom-' + Date.now(),
+        name: name,
+        tts: tts,
+        isPreset: false,
+        type: 'holistic_dtw_45',
+        samples: state.confirmedSamples,
+        samplesCount: sampleCount,
+        createdAt: new Date().toLocaleDateString()
+      };
+
+      state.gesturesDB.push(newGesture);
+      saveDatabaseToLocalStorage();
+      renderGestureListUI();
+
+      resetRecordingFlow();
+
+      nameInput.value = '';
+      ttsInput.value = '';
+
+      showToast(`已成功收錄「${name}」（含 ${sampleCount} 個 45 幀 Holistic 樣本）！`, 'success');
+      nameInput.focus();
+    }
+
+    btnCancelRecordingFlow.addEventListener('click', () => {
+      resetRecordingFlow();
+      showToast('已清空錄製進度', 'info');
+    });
+
+    function saveDatabaseToLocalStorage() {
+      try {
+        localStorage.setItem('hksl_gesture_db_v3', JSON.stringify(state.gesturesDB));
+      } catch (e) {
+        console.error('LocalStorage save error:', e);
+      }
+    }
+
+    function loadDatabaseFromLocalStorage() {
+      try {
+        const saved = localStorage.getItem('hksl_gesture_db_v3');
+        if (saved) {
+          state.gesturesDB = JSON.parse(saved);
+        } else {
+          state.gesturesDB = [...DEFAULT_HKSL_TEMPLATES];
+          saveDatabaseToLocalStorage();
+        }
+      } catch (e) {
+        state.gesturesDB = [...DEFAULT_HKSL_TEMPLATES];
+      }
+      renderGestureListUI();
+    }
+
+    function renderGestureListUI() {
+      const container = document.getElementById('gesture-list-container');
+      const countBadge = document.getElementById('db-count-badge');
+
+      countBadge.innerText = `共 ${state.gesturesDB.length} 個手語`;
+
+      if (state.gesturesDB.length === 0) {
+        container.innerHTML = `<div class="text-center py-8 text-slate-500 text-xs">詞庫目前為空</div>`;
+        return;
+      }
+
+      container.innerHTML = state.gesturesDB.map((g) => `
+        <div class="glass-card p-2.5 sm:p-3 rounded-xl flex items-center justify-between border border-slate-800 gap-2">
+          <div class="flex items-center space-x-2.5 min-w-0">
+            <div class="w-8 h-8 rounded-lg ${g.isPreset ? 'bg-sky-500/20 text-sky-400' : 'bg-purple-500/20 text-purple-400'} flex items-center justify-center font-bold text-xs sm:text-sm flex-shrink-0">
+              ${g.isPreset ? '<i class="fa-solid fa-lock"></i>' : '<i class="fa-solid fa-hands"></i>'}
+            </div>
+            <div class="min-w-0">
+              <div class="text-xs sm:text-sm font-bold text-white truncate">${g.name}</div>
+              <div class="text-[10px] text-slate-400 truncate">
+                朗讀: "${g.tts}" • ${g.isPreset ? '系統預設' : `自訂 (${g.samplesCount || (g.samples ? g.samples.length : 0)}個 Holistic 樣本)`}
+              </div>
+            </div>
+          </div>
+          ${!g.isPreset ? `
+            <button onclick="deleteGesture('${g.id}')" class="p-1.5 sm:p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs transition flex-shrink-0 ml-1" title="刪除此手語">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          ` : '<span class="text-[9px] sm:text-[10px] text-slate-500 px-2 py-0.5 bg-slate-900 rounded-lg flex-shrink-0 ml-1">預設</span>'}
+        </div>
+      `).join('');
+    }
+
+    window.deleteGesture = function(id) {
+      state.gesturesDB = state.gesturesDB.filter(g => g.id !== id);
+      saveDatabaseToLocalStorage();
+      renderGestureListUI();
+      showToast('已刪除手語項目', 'info');
+    };
+
+    document.getElementById('btn-export-db').addEventListener('click', () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state.gesturesDB, null, 2));
+      const downloadAnchor = document.createElement('a');
+      downloadAnchor.setAttribute("href", dataStr);
+      downloadAnchor.setAttribute("download", `HKSL_Holistic_Gestures_${Date.now()}.json`);
+      document.body.appendChild(downloadAnchor);
+      downloadAnchor.click();
+      downloadAnchor.remove();
+      showToast('已成功匯出 JSON 詞庫！', 'success');
+    });
+
+    document.getElementById('file-import-db').addEventListener('change', (evt) => {
+      const file = evt.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const imported = JSON.parse(e.target.result);
+          if (Array.isArray(imported)) {
+            state.gesturesDB = imported;
+            saveDatabaseToLocalStorage();
+            renderGestureListUI();
+            showToast('已成功匯入詞庫數據！', 'success');
+          } else {
+            showToast('JSON 格式無效', 'error');
+          }
+        } catch (err) {
+          showToast('無法讀取 JSON 檔案', 'error');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById('btn-speak').addEventListener('click', () => {
+      if (state.sentence.length === 0) return;
+      const fullText = state.sentence.map(s => s.tts).join('，');
+      speakCantonese(fullText);
+    });
+
+    document.getElementById('btn-backspace').addEventListener('click', () => {
+      if (state.sentence.length > 0) {
+        state.sentence.pop();
+        renderSentenceUI();
+      }
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      state.sentence = [];
+      renderSentenceUI();
+    });
+
+    function toggleMirrorAction() {
+      state.isMirrored = !state.isMirrored;
+      showToast(state.isMirrored ? '已開啟鏡像' : '已關閉鏡像', 'info');
+    }
+
+    let cameraInstance = null;
+
+    /* 啟動 Holistic 全方位追蹤 */
+    function startMediaPipeHolistic() {
+      const holistic = new Holistic({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+      });
+
+      holistic.setOptions({
+        modelComplexity: 1,
+        smoothLandmarks: true,
+        enableSegmentation: false,
+        refineFaceLandmarks: true, // 包含眼珠與精細嘴唇
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      holistic.onResults(onHolisticResults);
+
+      cameraInstance = new Camera(videoElement, {
+        onFrame: async () => {
+          await holistic.send({ image: videoElement });
+        },
+        width: 640,
+        height: 480,
+        facingMode: state.isCameraFacingUser ? 'user' : 'environment'
+      });
+
+      cameraInstance.start();
+    }
+
+    function switchCameraAction() {
+      state.isCameraFacingUser = !state.isCameraFacingUser;
+      if (cameraInstance) {
+        cameraInstance.stop();
+        startMediaPipeHolistic();
+        showToast('已切換鏡頭', 'info');
+      }
+    }
+
+    document.querySelectorAll('.btn-toggle-mirror').forEach(btn => {
+      btn.addEventListener('click', toggleMirrorAction);
+    });
+
+    document.querySelectorAll('.btn-switch-cam').forEach(btn => {
+      btn.addEventListener('click', switchCameraAction);
+    });
+
+    const sliderConf = document.getElementById('slider-confidence');
+    sliderConf.addEventListener('input', (e) => {
+      state.confidenceThreshold = e.target.value / 100;
+      document.getElementById('slider-confidence-val').innerText = `${e.target.value}%`;
+    });
+
+    const sliderVelocity = document.getElementById('slider-velocity');
+    sliderVelocity.addEventListener('input', (e) => {
+      state.velocityLockThreshold = parseFloat(e.target.value);
+      document.getElementById('slider-velocity-val').innerText = e.target.value;
+    });
+
+    const sliderHold = document.getElementById('slider-hold');
+    sliderHold.addEventListener('input', (e) => {
+      state.holdDuration = parseFloat(e.target.value);
+      document.getElementById('slider-hold-val').innerText = `${e.target.value}秒`;
+    });
+
+    document.getElementById('select-skeleton-theme').addEventListener('change', (e) => {
+      state.skeletonTheme = e.target.value;
+    });
+
+    document.getElementById('btn-reset-db').addEventListener('click', () => {
+      state.gesturesDB = [...DEFAULT_HKSL_TEMPLATES];
+      saveDatabaseToLocalStorage();
+      renderGestureListUI();
+      showToast('已重置為預設詞庫（你好、多謝）', 'info');
+    });
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById(tabId).classList.remove('hidden');
+
+      document.querySelectorAll('.nav-tab').forEach(btn => {
+        if (btn.getAttribute('data-target') === tabId) {
+          btn.classList.add('text-sky-400');
+          btn.classList.remove('text-slate-400');
+        } else {
+          btn.classList.remove('text-sky-400');
+          btn.classList.add('text-slate-400');
+        }
+      });
+
+      if (tabId !== 'tab-recognize') {
+        state.lastDetectedLabel = '';
+        state.labelHoldStartTime = 0;
+        detectedLabelEl.innerText = '已暫停辨識';
+        detectedConfEl.innerText = '0%';
+      }
+    }
+
+    document.querySelectorAll('.nav-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        switchTab(btn.getAttribute('data-target'));
+      });
+    });
+
+    window.onload = function() {
+      loadDatabaseFromLocalStorage();
+      startMediaPipeHolistic();
+      
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          window.speechSynthesis.getVoices();
+        };
+      }
+    };
+  </script>
+</body>
+</html>
